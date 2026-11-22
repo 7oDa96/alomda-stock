@@ -91,6 +91,27 @@ function renderCart(){
  $('cartList').querySelectorAll('.cart-remove').forEach(btn=>btn.addEventListener('click',()=>{cart.splice(Number(btn.dataset.index),1);renderCart();}));
 }
 function escapeHtml(value){return String(value).replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));}
+function sendRequestWithoutCors(payload){
+ return new Promise((resolve,reject)=>{
+  const token='alomda_'+Date.now()+'_'+Math.random().toString(36).slice(2);
+  const frame=document.createElement('iframe');frame.name='alomda_submit_'+token;frame.style.display='none';frame.setAttribute('aria-hidden','true');
+  const form=document.createElement('form');form.method='POST';form.action=SCRIPT_URL;form.target=frame.name;form.style.display='none';
+  const payloadInput=document.createElement('input');payloadInput.type='hidden';payloadInput.name='payload';payloadInput.value=JSON.stringify(payload);
+  const tokenInput=document.createElement('input');tokenInput.type='hidden';tokenInput.name='token';tokenInput.value=token;
+  form.append(payloadInput,tokenInput);document.body.append(frame,form);
+  let finished=false;
+  const cleanup=()=>{window.removeEventListener('message',onMessage);form.remove();frame.remove();clearTimeout(timer);};
+  const finish=(fn,value)=>{if(finished)return;finished=true;cleanup();fn(value);};
+  const onMessage=(event)=>{
+   if(event.source!==frame.contentWindow||!event.data||event.data.type!=='alomda-stock-result'||event.data.token!==token)return;
+   if(event.data.result&&event.data.result.ok)finish(resolve,event.data.result);
+   else finish(reject,new Error(event.data.result?.message||'تعذر حفظ الطلب في الشيت.'));
+  };
+  window.addEventListener('message',onMessage);
+  const timer=setTimeout(()=>finish(reject,new Error('انتهت مهلة الاتصال. تأكد من نشر إصدار Apps Script الجديد ثم حاول مرة أخرى.')),60000);
+  try{form.submit();}catch(err){finish(reject,err);}
+ });
+}
 async function submitRequest(e){
  e.preventDefault();const toast=$('toast'),submit=document.querySelector('.submit');
  if(!$ ('branch').value||!$('supervisor').value.trim()){toast.style.display='block';toast.textContent='من فضلك اختر الفرع واكتب اسم المشرف.';return;}
@@ -98,11 +119,10 @@ async function submitRequest(e){
  const payload={branch:$('branch').value,supervisor:$('supervisor').value.trim(),notes:$('notes').value.trim(),items:cart.map(item=>({name:item.name,quantity:item.quantity,unit:item.unit}))};
  submit.disabled=true;submit.textContent='جارٍ إرسال الطلب...';toast.style.display='block';toast.textContent='جارٍ إرسال الطلب إلى سجل النواقص...';
  try{
-  const response=await fetch(SCRIPT_URL,{method:'POST',headers:{'Content-Type':'text/plain;charset=utf-8'},body:JSON.stringify(payload)});
-  const result=await response.json();if(!result.ok)throw new Error(result.message||'تعذر حفظ الطلب.');
+  const result=await sendRequestWithoutCors(payload);
   toast.textContent=`تم إرسال الطلب بنجاح. رقم الطلب: ${result.requestId} — عدد الأصناف: ${result.itemCount}`;
   $('requestForm').reset();cart.splice(0,cart.length);selectedGroup='';productSelect.innerHTML='<option value="">اختر المجموعة أولًا</option>';productSelect.disabled=true;groupPicker.querySelectorAll('.group-btn').forEach(b=>b.classList.remove('active'));$('otherNameBox').style.display='none';$('otherUnitBox').style.display='none';$('preview').textContent='📦';$('previewText').textContent='اختار المجموعة ثم الصنف المطلوب';renderCart();
- }catch(err){toast.textContent='لم نتمكن من تأكيد الحفظ: '+err.message+' — راجع الاتصال وحاول مرة أخرى.';}
+ }catch(err){toast.textContent='لم نتمكن من تأكيد الحفظ: '+err.message+' — لم يتم تأكيد الحفظ؛ راجع نشر Apps Script وحاول مرة أخرى.';}
  finally{submit.disabled=false;submit.textContent='إرسال الطلب';}
 }
 init();
