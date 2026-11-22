@@ -103,7 +103,7 @@ function sendRequestWithoutCors(payload){
   const cleanup=()=>{window.removeEventListener('message',onMessage);form.remove();frame.remove();clearTimeout(timer);};
   const finish=(fn,value)=>{if(finished)return;finished=true;cleanup();fn(value);};
   const onMessage=(event)=>{
-   if(event.source!==frame.contentWindow||!event.data||event.data.type!=='alomda-stock-result'||event.data.token!==token)return;
+   if(!event.data||event.data.type!=='alomda-stock-result'||event.data.token!==token)return;
    if(event.data.result&&event.data.result.ok)finish(resolve,event.data.result);
    else finish(reject,new Error(event.data.result?.message||'تعذر حفظ الطلب في الشيت.'));
   };
